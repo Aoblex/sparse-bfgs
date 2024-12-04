@@ -23,7 +23,7 @@ Eigen::VectorXd BFGS::optimize(const Eigen::VectorXd& initialPoint) {
     while (grad.norm() > tolerance && iter < maxIterations) {
         Eigen::VectorXd p = -H * grad; // Calculate the search direction
 
-        double alpha = simpleLineSearch(x, p, objectiveFunction, gradientFunction);
+        double alpha = WolfeLineSearch(x, p, objectiveFunction, gradientFunction); // Line search
 
         Eigen::VectorXd s = alpha * p; // Calculate the step
         Eigen::VectorXd x_new = x + s;

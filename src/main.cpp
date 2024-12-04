@@ -19,7 +19,7 @@ int main() {
     };
 
     Eigen::VectorXd initialPoint(2);
-    initialPoint << -1.2, 1.0;
+    initialPoint << 42.0, 67.42;
 
     BFGS optimizer(rosenbrock, rosenbrockGrad);
     Eigen::VectorXd result = optimizer.optimize(initialPoint);
