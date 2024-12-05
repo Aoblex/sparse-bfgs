@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.3)
+cmake_minimum_required(VERSION 3.20)
 
 # Project name
 project(BFGS)
@@ -13,6 +13,7 @@ add_executable(
     src/main.cpp
     src/BFGS.cpp
     src/LineSearch.cpp
+    src/MatrixOps.cpp
 )
 
 # Add include directory
