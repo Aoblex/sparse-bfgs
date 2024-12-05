@@ -8,7 +8,7 @@ class BFGS {
     public:
         BFGS(std::function<double(const Eigen::VectorXd&)> objectiveFunction,
                 std::function<Eigen::VectorXd(const Eigen::VectorXd&)> gradientFunction,
-                double tolerance = 1e-6, int maxIterations = 1000);
+                double tolerance = 1e-6, int maxIterations = 10000);
 
         Eigen::VectorXd H_optimize(const Eigen::VectorXd& initialPoint);
         Eigen::VectorXd B_optimize(const Eigen::VectorXd& initialPoint);

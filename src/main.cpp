@@ -1,41 +1,58 @@
 #include "BFGS.h"
+#include "MatrixOps.h"
 #include <Eigen/Dense>
 #include <iostream>
+#include <cmath>
 
 int main() {
-    auto rosenbrock = [](const Eigen::VectorXd& x) -> double {
-        double a = 1.0, b = 100.0;
-        double sum = 0.0;
-        for (int i = 0; i < x.size() - 1; ++i) {
-            double x1 = x(i), x2 = x(i + 1);
-            sum += std::pow(a - x1, 2) + b * std::pow(x2 - x1 * x1, 2);
+    std::srand(42); // Set random seed for reproducibility
+
+    int n = 100, m = 80;
+    double eta = 0.1;
+    Eigen::VectorXd a = generateDiscreteDistribution(n);
+    Eigen::VectorXd b = generateDiscreteDistribution(m);
+    Eigen::VectorXd x1 = Eigen::VectorXd::Random(n).array() * 5;
+    Eigen::VectorXd x2 = Eigen::VectorXd::Random(m).array() * 5;
+    Eigen::VectorXd initialPoint = Eigen::VectorXd::Random(n + m);
+
+    auto entropic_regularized_OT = [n, m, a, b, x1, x2, eta](const Eigen::VectorXd& input) -> double {
+        Eigen::VectorXd alpha = input.head(n), beta = input.tail(m);
+        double result = 0.0;
+
+        result -= alpha.dot(a) + beta.dot(b);
+
+        for (int i = 0; i < n; ++i) {
+            for (int j = 0; j < m; ++j) {
+                double exp_term = std::exp((alpha(i) + beta(j) - pow(x1(i) - x2(j), 2)) / eta);
+                result += eta * exp_term;
+            }
         }
-        return sum;
+        return result;
     };
 
-    auto rosenbrockGrad = [](const Eigen::VectorXd& x) -> Eigen::VectorXd {
-        double a = 1.0, b = 100.0;
-        Eigen::VectorXd grad(x.size());
+    auto entropic_regularized_OT_grad = [n, m, a, b, x1, x2, eta](const Eigen::VectorXd& input) -> Eigen::VectorXd {
+        Eigen::VectorXd alpha = input.head(n), beta = input.tail(m);
+        Eigen::VectorXd grad(n + m);
         grad.setZero();
-        for (int i = 0; i < x.size() - 1; ++i) {
-            double x1 = x(i), x2 = x(i + 1);
-            grad(i) += -2 * (a - x1) - 4 * b * (x2 - x1 * x1) * x1;
-            grad(i + 1) += 2 * b * (x2 - x1 * x1);
+
+        grad.head(n) = -a;
+        grad.tail(m) = -b;
+
+        for (int i = 0; i < n; ++i) {
+            for (int j = 0; j < m; ++j) {
+                double exp_term = std::exp((alpha(i) + beta(j) - pow(x1(i) - x2(j), 2)) / eta);
+                grad(i) += exp_term;
+                grad(j + n) += exp_term;
+            }
         }
         return grad;
     };
 
-    int dimension = 200;
-
-    Eigen::VectorXd initialPoint(dimension);
-    std::srand(42); // Set random seed for reproducibility
-    initialPoint.setRandom(); // Initialize with random values
-
-    BFGS optimizer(rosenbrock, rosenbrockGrad);
-    Eigen::VectorXd result = optimizer.optimize(initialPoint);
+    BFGS optimizer(entropic_regularized_OT, entropic_regularized_OT_grad);
+    Eigen::VectorXd result = optimizer.B_optimize(initialPoint);
 
     std::cout << "Optimized parameters: " << result.transpose() << std::endl;
-    std::cout << "Minimum value: " << rosenbrock(result) << std::endl;
+    std::cout << "Minimum value: " << entropic_regularized_OT(result) << std::endl;
 
     return 0;
 }
