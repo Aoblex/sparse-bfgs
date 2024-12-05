@@ -2,6 +2,8 @@
 #define BFGS_H
 
 #include <Eigen/Dense>
+#include <Eigen/Sparse>
+#include <Eigen/SparseCholesky>
 #include <functional>
 
 class BFGS {
