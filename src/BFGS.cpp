@@ -147,6 +147,8 @@ Eigen::VectorXd BFGS::sparseB_optimize(
     double eta,
     const Eigen::MatrixXd& M
 ) { 
+    /* This method does not converge with these parameters */
+
     //time start
     auto start = std::chrono::high_resolution_clock::now();
 
@@ -157,7 +159,7 @@ Eigen::VectorXd BFGS::sparseB_optimize(
     Eigen::SparseMatrix<double> Hessian(l, l);
     Eigen::MatrixXd T(n, m);
     Eigen::VectorXd T_colsum(m), T_rowsum(n), p;
-    double step_size, eps = 1e-6;
+    double step_size, eps = 1e-6; // how much to add to diagonal elements?
     typedef Eigen::Triplet<double> Triplet;
     std::vector<Triplet> TripletList;
     Eigen::SimplicialLLT<Eigen::SparseMatrix<double>> solver;
@@ -188,7 +190,7 @@ Eigen::VectorXd BFGS::sparseB_optimize(
         for (int i = 0; i < n; ++i)
             for (int j = 0; j < m; ++j) {
                 double val = T(i, j);
-                if (val < 1e-6) continue;
+                if (val < 1e-6) continue; // how to make it sparse?
                 TripletList.emplace_back(Triplet(i, j + n, val));
                 TripletList.emplace_back(Triplet(j + n, i, val));
             }
