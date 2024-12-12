@@ -14,16 +14,19 @@ class BFGS {
 
         Eigen::VectorXd H_optimize(const Eigen::VectorXd& initialPoint);
         Eigen::VectorXd B_optimize(const Eigen::VectorXd& initialPoint);
-        Eigen::VectorXd sparseB_optimize(const Eigen::VectorXd& initialPoint);
+        Eigen::VectorXd sparseB_optimize(
+            const Eigen::VectorXd& initialPoint,
+            const Eigen::VectorXd& x1_dis,
+            const Eigen::VectorXd& x2_di,
+            double eta,
+            const Eigen::MatrixXd& M
+        );
 
     private:
         std::function<double(const Eigen::VectorXd&)> objectiveFunction;
         std::function<Eigen::VectorXd(const Eigen::VectorXd&)> gradientFunction;
         double tolerance;
         int maxIterations;
-
-        double lineSearch(const Eigen::VectorXd& x, const Eigen::VectorXd& p, double alpha = 1.0,
-                double c = 1e-4, double tau = 0.5);
 
 };
 

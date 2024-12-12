@@ -3,6 +3,7 @@
 #include "LineSearch.h"
 #include <iostream>
 #include <cmath>
+#include <chrono>
 
 // BFGS constructor
 BFGS::BFGS(
@@ -14,135 +15,219 @@ BFGS::BFGS(
 
 // BFGS::optimize function
 Eigen::VectorXd BFGS::H_optimize(const Eigen::VectorXd& initialPoint) {
-    Eigen::VectorXd x = initialPoint;
-    int n = x.size();
-    Eigen::MatrixXd H = Eigen::MatrixXd::Identity(n, n);  // Initialize the Inverse of Hessian as identity matrix
-    Eigen::VectorXd grad = gradientFunction(x); // Gradient function
-    Eigen::MatrixXd I = Eigen::MatrixXd::Identity(n, n); // Identity matrix
+    // time start
+    auto start = std::chrono::high_resolution_clock::now();
 
-    int iter = 0;
-    while (grad.norm() > tolerance && iter < maxIterations) {
-        Eigen::VectorXd p = -H * grad; // Calculate the search direction
+    // declaration
+    Eigen::VectorXd x, grad, x_new, grad_new, p;
+    Eigen::VectorXd y, s;
+    Eigen::MatrixXd Hessian_inv_hat, W;
+    int n, iter;
+    double step_size, rho;
 
-        double alpha = WolfeLineSearch(x, p, objectiveFunction, gradientFunction); // Line search
+    // initialization
+    x = initialPoint;
+    grad = gradientFunction(x);
+    n = x.size(), iter = 0;
+    Hessian_inv_hat = Eigen::MatrixXd::Identity(n, n);
 
-        Eigen::VectorXd s = alpha * p; // Calculate the step
-        Eigen::VectorXd x_new = x + s;
-        Eigen::VectorXd grad_new = gradientFunction(x_new);
-        Eigen::VectorXd y = grad_new - grad;
+    // start the optimization
+    while(grad.norm() > tolerance && iter < maxIterations) {
+        p = -Hessian_inv_hat * grad;
+        step_size = WolfeLineSearch(x, p, objectiveFunction, gradientFunction);
+        s = step_size * p;
 
-        double rho = 1.0 / y.dot(s);
+        x_new = x + s;
+        grad_new = gradientFunction(x_new);
+        y = grad_new - grad;
+
+        // update Hessian_hat
+        rho = 1.0 / y.dot(s);
         if (std::isfinite(rho)) { // Update the inverse Hessian
-            Eigen::MatrixXd W = I - rho * y * s.transpose();
-            H = W.transpose() * H * W + rho * (s * s.transpose());
+            W = Eigen::MatrixXd::Identity(n, n) - rho * y * s.transpose();
+            Hessian_inv_hat = W.transpose() * Hessian_inv_hat * W + rho * (s * s.transpose());
         }
 
+        // update x and grad
         x = x_new;
         grad = grad_new;
+
+        // show the iteration
         iter++;
-
-        std::cout << "Iteration: " << iter
-            << ", Objective: " << objectiveFunction(x)
-            << ", Gradient norm: " << grad.norm() << std::endl;
-
+        if (iter % 50 == 0) {
+            std::cout << "Iteration: " << iter
+                << ", Objective: " << objectiveFunction(x)
+                << ", Gradient norm: " << grad.norm() << std::endl;
+        }
     }
 
+    // check convergence
     if (grad.norm() <= tolerance)
         std::cout << "Converged after " << iter << " iterations." << std::endl;
     else
         std::cout << "Maximum iterations reached without convergence." << std::endl;
+    
+    // time end
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = end - start;
+    std::cout << "Elapsed time: " << elapsed.count() << " s" << std::endl;
 
     return x;
 }
 
 Eigen::VectorXd BFGS::B_optimize(const Eigen::VectorXd& initialPoint) {
-    Eigen::VectorXd x = initialPoint;
-    int n = x.size();
-    Eigen::MatrixXd B = Eigen::MatrixXd::Identity(n, n);  // Initialize the Inverse of Hessian as identity matrix
-    Eigen::MatrixXd Binv;
-    Eigen::VectorXd grad = gradientFunction(x); // Gradient function
-    Eigen::MatrixXd I = Eigen::MatrixXd::Identity(n, n); // Identity matrix
+    // time start
+    auto start = std::chrono::high_resolution_clock::now();
 
-    int iter = 0;
+    // declaration
+    Eigen::VectorXd x, grad, x_new, grad_new, p;
+    Eigen::VectorXd y, s, W;
+    Eigen::MatrixXd Hessian_hat;
+    Eigen::LLT<Eigen::MatrixXd> solver;
+    double step_size, rho;
+    int n, iter;
+
+    // initialization
+    x = initialPoint;
+    grad = gradientFunction(x);
+    n = x.size(), iter = 0;
+    Hessian_hat = Eigen::MatrixXd::Identity(n, n);
+
+    // start the optimization
     while (grad.norm() > tolerance && iter < maxIterations) {
-        // Use solve!
-        Binv = B.inverse();
-        Eigen::VectorXd p = -Binv * grad; // Calculate the search direction
+        // calculate the search direction
+        solver.compute(Hessian_hat);
+        if (solver.info() != Eigen::Success) {
+            std::cerr << "Decomposition failed!" << std::endl;
+            break;
+        }
+        p = -solver.solve(grad);
 
-        double alpha = WolfeLineSearch(x, p, objectiveFunction, gradientFunction); // Line search
+        // perform line search
+        step_size = WolfeLineSearch(x, p, objectiveFunction, gradientFunction);
 
-        Eigen::VectorXd s = alpha * p; // Calculate the step
-        Eigen::VectorXd x_new = x + s;
-        Eigen::VectorXd grad_new = gradientFunction(x_new);
-        Eigen::VectorXd y = grad_new - grad;
-        Eigen::VectorXd Bs = B * s;
+        // update Hessian_hat
+        s = step_size * p; // Calculate the step
+        x_new = x + s;
+        grad_new = gradientFunction(x_new);
+        y = grad_new - grad;
+        W = Hessian_hat * s;
+        Hessian_hat += (y * y.transpose()) / y.dot(s) - (W * W.transpose()) / s.dot(W);
 
-        B = B + (y * y.transpose()) / y.dot(s) - (Bs * Bs.transpose()) / s.dot(Bs);
-
+        // update x and grad
         x = x_new;
         grad = grad_new;
+
+        // show the iteration
         iter++;
-
-        std::cout << "Iteration: " << iter
-            << ", Objective: " << objectiveFunction(x)
-            << ", Gradient norm: " << grad.norm() << std::endl;
-
+        if (iter % 50 == 0) {
+            std::cout << "Iteration: " << iter
+                << ", Objective: " << objectiveFunction(x)
+                << ", Gradient norm: " << grad.norm() << std::endl;
+        }
     }
 
     if (grad.norm() <= tolerance)
         std::cout << "Converged after " << iter << " iterations." << std::endl;
     else
         std::cout << "Maximum iterations reached without convergence." << std::endl;
+
+    // time end
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = end - start;
+    std::cout << "Elapsed time: " << elapsed.count() << " s" << std::endl;
 
     return x;
 }
 
-Eigen::VectorXd BFGS::sparseB_optimize(const Eigen::VectorXd& initialPoint) { 
-    Eigen::VectorXd x = initialPoint;
-    int n = x.size();
-    Eigen::MatrixXd B = Eigen::MatrixXd::Identity(n, n);  // Initialize the Inverse of Hessian as identity matrix
-    Eigen::MatrixXd Bspa_inv, p;
-    Eigen::VectorXd grad = gradientFunction(x); // Gradient function
-    Eigen::MatrixXd I = Eigen::MatrixXd::Identity(n, n); // Identity matrix
+Eigen::VectorXd BFGS::sparseB_optimize(
+    const Eigen::VectorXd& initialPoint,
+    const Eigen::VectorXd& x1_dis,
+    const Eigen::VectorXd& x2_dis,
+    double eta,
+    const Eigen::MatrixXd& M
+) { 
+    //time start
+    auto start = std::chrono::high_resolution_clock::now();
 
-    int iter = 0;
-    while (grad.norm() > tolerance && iter < maxIterations) {
-        Eigen::SparseMatrix<double> Bspa = sparsifyMatrix(B);
-        
-        Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> solver;
-        solver.compute(Bspa);
+    // declaration
+    int n = x1_dis.size(), m = x2_dis.size();
+    int l = initialPoint.size(), iter = 0;
+    Eigen::VectorXd x, grad, alpha, beta;
+    Eigen::SparseMatrix<double> Hessian(l, l);
+    Eigen::MatrixXd T(n, m);
+    Eigen::VectorXd T_colsum(m), T_rowsum(n), p;
+    double step_size, eps = 1e-6;
+    typedef Eigen::Triplet<double> Triplet;
+    std::vector<Triplet> TripletList;
+    Eigen::SimplicialLLT<Eigen::SparseMatrix<double>> solver;
 
-        if (solver.info() != Eigen::Success) {
-            std::cerr << "Decomposition failed!" << std::endl;
-            return x;
+    x = initialPoint, x(l - 1) = 0;
+    do {
+        // initialize
+        grad = gradientFunction(x);
+        alpha = x.head(n), beta = x.tail(m);
+        for(int i = 0; i < n; ++i) {
+            for(int j = 0; j < m; ++j) {
+                T(i, j) = std::exp((alpha(i) + beta(j) - M(i, j)) / eta);
+            }
         }
 
-        // without BFGS terms
-        p = Eigen::MatrixXd(solver.solve(grad));
+        T_colsum = T.rowwise().sum(); // shape = (n, 1)
+        T_rowsum = T.colwise().sum(); // shape = (1, m)
 
-        double alpha = WolfeLineSearch(x, p, objectiveFunction, gradientFunction); // Line search
-        Eigen::VectorXd s = alpha * p; // Calculate the step
-        Eigen::VectorXd x_new = x + s;
-        Eigen::VectorXd grad_new = gradientFunction(x_new);
-        Eigen::VectorXd y = grad_new - grad;
-        Eigen::VectorXd Bs = B * s;
+        // top left
+        for (int i = 0; i < n; ++i)
+            TripletList.emplace_back(Triplet(i, i, T_colsum(i) + eps));
 
-        B = B + (y * y.transpose()) / y.dot(s) - (Bs * Bs.transpose()) / s.dot(Bs);
+        // bottom right
+        for (int j = 0; j < m; ++j)
+            TripletList.emplace_back(Triplet(j + n, j + n, T_rowsum(j) + eps));
+        
+        // top right and bottom left
+        for (int i = 0; i < n; ++i)
+            for (int j = 0; j < m; ++j) {
+                double val = T(i, j);
+                if (val < 1e-6) continue;
+                TripletList.emplace_back(Triplet(i, j + n, val));
+                TripletList.emplace_back(Triplet(j + n, i, val));
+            }
+        
+        // Construct the triplets
+        Hessian.setFromTriplets(TripletList.begin(), TripletList.end());
+        solver.compute(Hessian);
 
-        x = x_new;
-        grad = grad_new;
+        // Check if the decomposition failed
+        if (solver.info() != Eigen::Success) {
+            std::cerr << "Decomposition failed!" << std::endl;
+            break;
+        }
+
+        // update x
+        p = -solver.solve(grad);
+        p(l - 1) = 0; // set the last element to 0
+        // step_size = WolfeLineSearch(x, p, objectiveFunction, gradientFunction);
+        step_size = ArmijoLineSearch(x, p, objectiveFunction, gradientFunction);
+        x = x + step_size * p;
+
         iter++;
 
-        std::cout << "Iteration: " << iter
-            << ", Objective: " << objectiveFunction(x)
-            << ", Gradient norm: " << grad.norm() << std::endl;
-
-    }
+        if (iter % 50 == 0) {
+            std::cout << "Iteration: " << iter
+                << ", Objective: " << objectiveFunction(x)
+                << ", Gradient norm: " << grad.norm() << std::endl;
+        }
+    } while(grad.norm() > tolerance && iter < maxIterations);
 
     if (grad.norm() <= tolerance)
         std::cout << "Converged after " << iter << " iterations." << std::endl;
     else
         std::cout << "Maximum iterations reached without convergence." << std::endl;
 
+    // time end
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = end - start;
+    std::cout << "Elapsed time: " << elapsed.count() << " s" << std::endl;
+    
     return x;
 }
